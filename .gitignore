@@ -1,0 +1,48 @@
+# qmake / make
+Makefile
+Makefile.*
+.qmake.stash
+.qmake.cache
+object_script.*
+*.o
+*.obj
+*.a
+*.so
+*.so.*
+*.core
+core
+
+# Qt generated files
+moc_*.cpp
+moc_*.h
+moc_predefs.h
+ui_*.h
+qrc_*.cpp
+*.moc
+*.qm
+
+# binary
+/qsstv-ng
+
+# out of source build directories
+/build/
+/build-*/
+
+# makepkg
+/src/
+/pkg/
+*.pkg.tar
+*.pkg.tar.*
+*.src.tar.*
+*.log
+
+# IDE / editor
+*.pro.user
+*.pro.user.*
+*.autosave
+CMakeLists.txt.user
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
