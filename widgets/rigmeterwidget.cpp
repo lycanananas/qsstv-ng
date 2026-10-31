@@ -10,6 +10,7 @@
 #include <QProgressBar>
 #include <QSettings>
 #include <QPalette>
+#include <QWheelEvent>
 #include <math.h>
 
 #define POLLINTERVAL 500  // ms
@@ -23,9 +24,29 @@
 #define COLORWARN   QColor("#e67e00")
 #define COLORALARM  QColor("#d00000")
 
+// mouse wheel: one notch is one position (0.1 dB), instead of singleStep*wheelScrollLines
+class levelSlider : public QSlider
+{
+public:
+  levelSlider(QWidget *parent) : QSlider(Qt::Horizontal,parent), wheelDelta(0) {}
+protected:
+  void wheelEvent(QWheelEvent *e) override
+  {
+    QPoint d=e->angleDelta();
+    wheelDelta+=(d.y()!=0) ? d.y() : d.x();
+    int steps=wheelDelta/120;  // touchpads send smaller deltas, accumulate them
+    wheelDelta-=steps*120;
+    if(invertedControls()) steps=-steps;
+    setValue(value()+steps);
+    e->accept();
+  }
+private:
+  int wheelDelta;
+};
+
 static QSlider *makeSlider(int maximum,QWidget *parent)
 {
-  QSlider *sl=new QSlider(Qt::Horizontal,parent);
+  QSlider *sl=new levelSlider(parent);
   sl->setRange(MINLEVEL,maximum);
   sl->setSingleStep(5);
   sl->setPageStep(30);

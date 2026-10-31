@@ -10,7 +10,7 @@ _local=${QSSTV_LOCAL:-0}
 
 _pkgname=qsstv-ng
 pkgname=${_pkgname}-git
-pkgver=10.0.0.r1.g7bb4a22
+pkgver=10.0.0.r2.gd98b8c4
 pkgrel=1
 pkgdesc="Radio Slow-Scan TV for qt (QSSTV fork with Qt Multimedia audio device selection)"
 url="https://github.com/lycanananas/qsstv-ng"
