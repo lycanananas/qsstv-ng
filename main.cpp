@@ -36,8 +36,8 @@
 
 QSplashScreen *splash;
 
-// When no settings exist yet for this CONFIGVERSION, copy them from the newest older
-// QSSTV-NG settings file (~/.config/QSSTV-NG/qsstv-ng_<version>.conf),
+// When no settings exist yet (~/.config/QSSTV-NG/qsstv-ng.conf), copy them from the newest
+// versioned QSSTV-NG settings file of earlier builds (~/.config/QSSTV-NG/qsstv-ng_<version>.conf),
 // or else from the original QSSTV (~/.config/ON4QZ/qsstv_9.0.conf).
 static void migrateSettings()
 {
@@ -45,7 +45,7 @@ static void migrateSettings()
   if(!qSettings.allKeys().isEmpty()) return;
 
   QFileInfo current(qSettings.fileName());
-  QString prefix=APPLICATION.left(APPLICATION.lastIndexOf('_')+1);  // "qsstv-ng_"
+  QString prefix=APPLICATION+"_";  // "qsstv-ng_"
   QString bestFile;
   QVersionNumber bestVersion;
   foreach(const QFileInfo &fi,current.dir().entryInfoList(QStringList() << prefix+"*."+current.suffix(),QDir::Files))
@@ -77,6 +77,9 @@ int main( int argc, char ** argv )
   QCoreApplication::setOrganizationName(ORGANIZATION);
   QCoreApplication::setApplicationName(APPLICATION);
   QApplication app( argc, argv );
+  // window <-> launcher association: Wayland app_id and _KDE_NET_WM_DESKTOP_FILE
+  // (WM_CLASS can't be used, its class part is the application name which also names the settings file)
+  QGuiApplication::setDesktopFileName("qsstv-ng");
   migrateSettings();
   QPixmap pixmap(":/icons/qsstvsplash.png");
   QSplashScreen splash(pixmap,Qt::WindowStaysOnTopHint);

@@ -47,6 +47,7 @@
 #include <QScreen>
 #include <QApplication>
 #include "filewatcher.h"
+#include "rigmeterwidget.h"
 #include "ftpfunctions.h"
 
 
@@ -92,6 +93,8 @@ mainWindow::mainWindow(QWidget *parent) : QMainWindow(parent),  ui(new Ui::MainW
   setWindowTitle(qsstvVersion);
   setWindowIcon(QPixmap(":/icons/qsstv.png"));
   ui->maintabWidget->setCurrentIndex(0);
+  rigMeter=new rigMeterWidget(this);
+  ui->statusBar->addPermanentWidget(rigMeter);
   ui->statusBar->addPermanentWidget(freqDisplay);
   ui->statusBar->addPermanentWidget(freqComboBox);
   ui->statusBar->addPermanentWidget(wfTextPushButton);
@@ -325,11 +328,8 @@ void mainWindow::slotSaveWaterfallImage()
       else
         p.drawText(1,15, "no freq");
 
-      if (im.save(fn, "jpg"))
+      if (!im.save(fn, "jpg"))
         {
-          statusBarPtr->showMessage("Saved "+fn);
-        }
-      else {
           statusBarPtr->showMessage("Error saving image");
         }
       delete wf;
@@ -414,6 +414,7 @@ void mainWindow::setPTT(bool p)
 {
   if(p) pttIcon->setPixmap(*redPXMPtr);
   else pttIcon->setPixmap(*greenPXMPtr);
+  rigMeter->setTransmitting(p);
 }
 
 void mainWindow::setSSTVDRMPushButton(bool inDRM)

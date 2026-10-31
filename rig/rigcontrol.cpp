@@ -443,6 +443,39 @@ void rigControl::activatePTT(bool b)
 }
 
 
+// read the transmit meters, a value is set to -1 if the rig can't provide it
+bool rigControl::getTxMeters(double &power, bool &powerInWatts, double &swr, double &alc)
+{
+  value_t val;
+  power=-1;
+  swr=-1;
+  alc=-1;
+  powerInWatts=false;
+  if(!rigControlEnabled || catParams.enableXMLRPC) return false;
+  if(rig_has_get_level(my_rig,RIG_LEVEL_RFPOWER_METER_WATTS)
+     && (rig_get_level(my_rig,RIG_VFO_CURR,RIG_LEVEL_RFPOWER_METER_WATTS,&val)==RIG_OK))
+    {
+      power=val.f;
+      powerInWatts=true;
+    }
+  else if(rig_has_get_level(my_rig,RIG_LEVEL_RFPOWER_METER)
+          && (rig_get_level(my_rig,RIG_VFO_CURR,RIG_LEVEL_RFPOWER_METER,&val)==RIG_OK))
+    {
+      power=val.f;
+    }
+  if(rig_has_get_level(my_rig,RIG_LEVEL_SWR)
+     && (rig_get_level(my_rig,RIG_VFO_CURR,RIG_LEVEL_SWR,&val)==RIG_OK))
+    {
+      swr=val.f;
+    }
+  if(rig_has_get_level(my_rig,RIG_LEVEL_ALC)
+     && (rig_get_level(my_rig,RIG_VFO_CURR,RIG_LEVEL_ALC,&val)==RIG_OK))
+    {
+      alc=val.f;
+    }
+  return (power>=0) || (swr>=0) || (alc>=0);
+}
+
 int  rigControl::rawCommand(QByteArray ba)
 {
   int i;

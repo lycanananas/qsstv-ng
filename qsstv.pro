@@ -27,7 +27,7 @@ PKGCONFIG += libopenjp2
 TARGET = qsstv-ng
 
 # short commit hash shown in the version string (only when building from a git checkout)
-GITCOMMIT = $$system(git -C $$PWD rev-parse --short=7 HEAD 2>/dev/null)
+isEmpty(GITCOMMIT): GITCOMMIT = $$system(git -C $$PWD rev-parse --short=7 HEAD 2>/dev/null)
 !isEmpty(GITCOMMIT): DEFINES += GITCOMMIT=\\\"$$GITCOMMIT\\\"
 
 
@@ -48,6 +48,7 @@ SOURCES += main.cpp\
     sound/soundqt.cpp \
     widgets/spectrumwidget.cpp \
     widgets/vumeter.cpp \
+    widgets/rigmeterwidget.cpp \
     widgets/fftdisplay.cpp \
     widgets/markerwidget.cpp \
     dsp/downsamplefilter.cpp \
@@ -218,6 +219,7 @@ HEADERS  += mainwindow.h \
     sound/soundqt.h \
     widgets/spectrumwidget.h \
     widgets/vumeter.h \
+    widgets/rigmeterwidget.h \
     widgets/fftdisplay.h \
     widgets/markerwidget.h \
     dsp/downsamplefilter.h \

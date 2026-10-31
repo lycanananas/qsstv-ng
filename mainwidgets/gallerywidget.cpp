@@ -184,16 +184,14 @@ const QStringList &galleryWidget::getFilenames()
 
 */
 
-void galleryWidget::putRxImage ( QString fn )
+void galleryWidget::putRxImage ( QString )
 {
   if(transmissionModeIndex==TRXSSTV)
     {
-      statusBarPtr->showMessage ( "Saved: "+fn );
       ui->rxSSTVMatrix->changed();
     }
   else
     {
-      statusBarPtr->showMessage ( "Saved: "+fn+QString("  (%1dB)").arg(lastAvgSNR,0,'f',0) );
       ui->rxDRMMatrix->changed();
     }
 }

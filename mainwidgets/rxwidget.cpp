@@ -1,4 +1,6 @@
 #include "rxwidget.h"
+#include <QToolButton>
+#include <QHBoxLayout>
 #include "appglobal.h"
 #include "dispatcher.h"
 #include "dirdialog.h"
@@ -48,6 +50,38 @@ rxWidget::rxWidget(QWidget *parent):QWidget(parent),ui(new Ui::rxWidget)
   connect(ui->whoPushButton,SIGNAL(clicked()),SLOT(slotWho()));
   connect(&ff,SIGNAL(listingDone(bool)),SLOT(slotWhoResult(bool)));
   doRemove=false;
+
+  // manual slant correction: fine tunes the RX clock, a slanted image is redrawn while it is received
+  slantLabel=new QLabel(this);
+  slantLabel->setAlignment(Qt::AlignRight|Qt::AlignVCenter);
+  slantSlider=new QSlider(Qt::Horizontal,this);
+  slantSlider->setRange(-1000,1000);
+  slantSlider->setSingleStep(1);
+  slantSlider->setPageStep(20);
+  slantSlider->setToolTip(tr("Manual slant correction of the RX clock in ppm.\n"
+                             "Image slanted like \\ : move right, slanted like / : move left.\n"
+                             "If you always need the same correction, calibrate the sound card instead."));
+  slantLabel->setToolTip(slantSlider->toolTip());
+  QToolButton *slantZeroButton=new QToolButton(this);
+  slantZeroButton->setText("0");
+  slantZeroButton->setToolTip(tr("Reset slant correction"));
+  QHBoxLayout *slantLayout=new QHBoxLayout;
+  slantLayout->setContentsMargins(0,0,0,0);
+  slantLayout->setSpacing(2);
+  slantLayout->addWidget(slantSlider);
+  slantLayout->addWidget(slantZeroButton);
+  ui->gridLayout_2->addWidget(slantLabel,6,0);
+  ui->gridLayout_2->addLayout(slantLayout,6,2);
+  ui->autoSlantAdjustCheckBox->setToolTip(tr("Measure the slant from the sync pulses and correct the RX clock automatically,\n"
+                                             "the image is redrawn while it is being received"));
+  connect(slantSlider,SIGNAL(valueChanged(int)),SLOT(slotSlant(int)));
+  connect(slantZeroButton,&QToolButton::clicked,[this]{slantSlider->setValue(0);});
+}
+
+void rxWidget::slotSlant(int ppm)
+{
+  slantLabel->setText(QString("Slant %1%2 ppm").arg(ppm>0 ? "+" : "").arg(ppm));
+  rxSlantTrimPpm.storeRelaxed(ppm);
 }
 
 rxWidget::~rxWidget()
@@ -114,6 +148,8 @@ void rxWidget::readSettings()
   sstvModeIndexRx=(esstvMode)qSettings.value("sstvModeIndexRx",0).toInt();
   defaultImageFormat=qSettings.value("defaultImageFormat","png").toString();
   minCompletion=qSettings.value("minCompletion",25).toInt();
+  slantSlider->setValue(qSettings.value("slantTrimPpm",0).toInt());
+  slotSlant(slantSlider->value());
   setParams();
   qSettings.endGroup();
 
@@ -130,6 +166,7 @@ void rxWidget::writeSettings()
   qSettings.setValue("sstvModeIndexRx",sstvModeIndexRx);
   qSettings.setValue("defaultImageFormat",defaultImageFormat);
   qSettings.setValue("minCompletion",minCompletion);
+  qSettings.setValue("slantTrimPpm",slantSlider->value());
   qSettings.endGroup();
 }
 

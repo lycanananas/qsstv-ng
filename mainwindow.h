@@ -9,6 +9,7 @@
 class configDialog;
 class spectrumWidget;
 class ftpThread;
+class rigMeterWidget;
 
 namespace Ui {
   class MainWindow;
@@ -76,6 +77,7 @@ private:
   QLabel pttText;
   QLabel *pttIcon;
   QLabel *freqDisplay;
+  rigMeterWidget *rigMeter;
   void timerEvent(QTimerEvent *);
   QStringList modModeList;
   QStringList modPassBandList;

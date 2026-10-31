@@ -62,6 +62,7 @@ public:
   void activatePTT(bool b);
   double getTxDelay() {return catParams.txOnDelay;}
   int rawCommand(QByteArray ba);
+  bool getTxMeters(double &power, bool &powerInWatts, double &swr, double &alc);
   QString initError;
 
 private:

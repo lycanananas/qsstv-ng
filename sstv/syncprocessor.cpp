@@ -154,7 +154,8 @@ void syncProcessor::init()
   }
   visMode=NOTVALID; // and reset the visMode
   syncProcesState=MODEDETECT;
-  modifiedClock=rxClock/SUBSAMPLINGFACTOR;
+  appliedTrimPpm=rxSlantTrimPpm.loadRelaxed();
+  modifiedClock=rxClock*(1.+appliedTrimPpm*1e-6)/SUBSAMPLINGFACTOR;
   syncArrayIndex=0;
   syncArray[0].init();
   retraceFlag=false;
@@ -312,7 +313,9 @@ bool syncProcessor::validateSync()
   }
   else if(syncArray[syncArrayIndex].diffStartEnd()>=MINRETRACEWIDTH/4)
   {
-    if((syncArrayIndex>2)
+    // merging pulses into a retrace is only done while hunting: during a fade or QRM the fragments
+    // of noise would otherwise end the image that is being received
+    if((syncProcesState!=INSYNC) && (syncArrayIndex>2)
        && (syncArray[syncArrayIndex].end-syncArray[syncArrayIndex-1].start)>=MINRETRACEWIDTH
        && (syncArray[syncArrayIndex].start-syncArray[syncArrayIndex-1].end)<=MINRETRACEWIDTH/5)
     {
@@ -452,7 +455,13 @@ void  syncProcessor::trackSyncs()
 void syncProcessor::slotNewCall(QString call)
 {
   emit callReceived(call);
-  retraceFlag=true;
+  // the FSK ID follows the image: only use it to end an image that is (almost) complete,
+  // an ID decoded from noise in the middle of the image must not restart the reception
+  if((syncProcesState==INSYNC) && (currentModePtr!=NULL)
+     && (currentModePtr->receivedLines()>=(currentModePtr->imageLines()*9)/10))
+  {
+    retraceFlag=true;
+  }
 }
 
 void syncProcessor::slotVisCodeDetected(int mode,uint visSampleCounter)
@@ -1131,6 +1140,35 @@ bool syncProcessor::slantAdjust(bool initial)
 }
 
 
+
+/**
+ * @brief apply a changed manual slant correction (rxSlantTrimPpm) to the clock
+ * @return true if an image is being received and has to be redrawn with the new clock (hasNewClock() is set)
+ */
+bool syncProcessor::updateClockTrim()
+{
+  int trim=rxSlantTrimPpm.loadRelaxed();
+  if(trim==appliedTrimPpm) return false;
+  modifiedClock*=(1.+trim*1e-6)/(1.+appliedTrimPpm*1e-6);
+  appliedTrimPpm=trim;
+  addToLog(QString("manual slant %1 ppm, clock %2").arg(trim).arg(modifiedClock),LOGSLANT);
+  if((syncProcesState!=INSYNC) || (currentMode==NOTVALID)) return false;
+  if((currentMode>=AVT24) && (currentMode<=AVT94)) return false;
+  samplesPerLine=getLineLength(currentMode,modifiedClock);
+  unsigned int syncCorrected;
+  if(syncArray[0].retrace)
+  {
+    syncCorrected=syncArray[0].end;
+  }
+  else
+  {
+    syncCorrected=(syncArray[0].start+syncArray[0].end)/2+getSyncWidth(currentMode,modifiedClock)/2;
+  }
+  syncPosition=currentModePtr->adjustSyncPosition(syncCorrected,syncArray[0].retrace)+FILTERDELAYCORRECTION;
+  recalculateMatchArray();
+  newClock=true;
+  return true;
+}
 
 void syncProcessor::switchSyncState(esyncState newState,quint32 sampleCntr)
 {

@@ -35,6 +35,37 @@ const QString playbackStateStr[soundBase::PBEND+1]=
 
 
 
+QAtomicInt soundBase::rxGainQ12(4096);
+QAtomicInt soundBase::txGainQ12(4096);
+
+static int gainToQ12(double gain)
+{
+  return qRound(4096.*qBound(0.,gain,4.));
+}
+
+static void applyGain(qint16 *data,int len,int gainQ12)
+{
+  int i,v;
+  if(gainQ12==4096) return;
+  for(i=0;i<len;i++)
+    {
+      v=(data[i]*gainQ12)>>12;
+      if(v>32767) v=32767;
+      else if(v<-32768) v=-32768;
+      data[i]=(qint16)v;
+    }
+}
+
+void soundBase::setRxGain(double gain)
+{
+  rxGainQ12.storeRelaxed(gainToQ12(gain));
+}
+
+void soundBase::setTxGain(double gain)
+{
+  txGainQ12.storeRelaxed(gainToQ12(gain));
+}
+
 soundBase::soundBase(QObject *parent) : QThread(parent)
 {
   captureState=CPINIT;
@@ -183,6 +214,7 @@ int soundBase::capture()
           storedFrames+=count;
         }
     }
+  applyGain(tempRXBuffer,DOWNSAMPLESIZE,rxGainQ12.loadRelaxed());
   downsampleFilterPtr->downSample4(tempRXBuffer);
   volume=downsampleFilterPtr->avgVolumeDb;
   rxBuffer.putNoCheck(downsampleFilterPtr->filteredDataPtr(),RXSTRIPE);
@@ -393,6 +425,7 @@ int soundBase::play()
         }
     }
   txBuffer.copyNoCheck(tempTXBuffer,numFrames);
+  applyGain((qint16 *)tempTXBuffer,2*numFrames,txGainQ12.loadRelaxed()); // stereo frames
   addToLog(QString("frames to write: %1 at %2 buffered:%3").arg(numFrames).arg(txBuffer.getReadIndex()).arg(txBuffer.count()),LOGSOUND);
 
   //  framesWritten=write(numFrames);

@@ -3,6 +3,8 @@
 #include "ftpfunctions.h"
 #include <QWidget>
 #include <QFrame>
+#include <QSlider>
+#include <QLabel>
 #include "spectrumwidget.h"
 #include "ui_rxwidget.h"
 
@@ -61,6 +63,7 @@ private slots:
   void slotSave();
   void slotWho();
   void slotWhoResult(bool err);
+  void slotSlant(int ppm);
 
 signals:
   void modeSwitch(int);
@@ -74,5 +77,7 @@ private:
   void setParams();
   ftpFunctions ff;
   bool doRemove;
+  QSlider *slantSlider;
+  QLabel *slantLabel;
 };
 #endif // RXWIDGET_H

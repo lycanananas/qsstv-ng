@@ -194,6 +194,9 @@ void sstvRx::process()
   syncProcessor::esyncProcessState syncState;
   rxSSTVStatusEvent *stce;
 
+  // manual slant correction changed: a received image is redrawn like with auto slant (hasNewClock)
+  syncWideProc.updateClockTrim();
+  syncNarrowProc.updateClockTrim();
   syncWideProc.process();
 
   syncStateWide=syncWideProc.getSyncState(syncPosition);

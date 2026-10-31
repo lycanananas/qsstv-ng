@@ -26,6 +26,7 @@
 
 
 bool autoSlantAdjust;
+QAtomicInt rxSlantTrimPpm(0);
 bool autoSave;
 int sensitivity;
 int filterIndex;

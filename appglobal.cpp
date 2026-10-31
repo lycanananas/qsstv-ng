@@ -15,7 +15,8 @@ const QString GITVERSION;
 #endif
 const QString LOGVERSION = ("qsstv-ng."+MAJORVERSION+MINORVERSION+".log");
 const QString ORGANIZATION = "QSSTV-NG";
-const QString APPLICATION  = ("qsstv-ng_" +CONFIGVERSION);
+// also the X11 WM_CLASS of the windows, it must match the name of qsstv-ng.desktop
+const QString APPLICATION  = "qsstv-ng";
 const QString LEGACYORGANIZATION = "ON4QZ";
 const QString LEGACYAPPLICATION  = "qsstv_9.0"; // settings of the original QSSTV
 const QString PROJECTURL = "https://github.com/lycanananas/qsstv-ng";

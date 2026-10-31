@@ -2,6 +2,7 @@
 #define SSTVPARAM_H
 #include <QString>
 #include "appglobal.h"
+#include <QAtomicInt>
 
 /** \file */
 
@@ -198,6 +199,7 @@ void printActiveSSTVParam(bool tx);
 quint32 getMaxLineSamples();
 
 extern bool autoSlantAdjust;
+extern QAtomicInt rxSlantTrimPpm; // manual slant correction of the RX clock, set from the GUI
 extern bool autoSave;
 extern int sensitivity;
 extern esstvMode sstvModeIndexRx;

@@ -128,6 +128,7 @@ public:
   void clear();
   void recalculateMatchArray();
   DSPFLOAT getNewClock() {return modifiedClock;}
+  bool updateClockTrim();
   void setSyncDetectionEnabled(bool enable) {enableSyncDetection=enable;}
 
 
@@ -171,6 +172,7 @@ private:
   esstvMode idxStart;
   esstvMode idxEnd;
   DSPFLOAT modifiedClock;
+  int appliedTrimPpm;
   DSPFLOAT samplesPerLine;
   streamDecoder streamDecode;
   DSPFLOAT lineTolerance;

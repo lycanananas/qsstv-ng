@@ -9,6 +9,7 @@
 
 #include <QThread>
 #include <QMutex>
+#include <QAtomicInt>
 
 #define BYTESPOWER 18
 
@@ -59,6 +60,9 @@ public:
   bool isPlaying() {return playbackState!=PBINIT;}
   bool isCapturing() {return captureState!=CPINIT;}
 
+  static void setRxGain(double gain); // linear, 1.0 = 100%
+  static void setTxGain(double gain);
+
   bool calibrate(bool isCapture);
   bool calibrationCount(unsigned int &frames, double &elapsedTime);
   int countAvailable;
@@ -99,6 +103,8 @@ protected:
 
 
 private:
+  static QAtomicInt rxGainQ12; // linear gain, 4096 = 0 dB
+  static QAtomicInt txGainQ12;
   downsampleFilter *downsampleFilterPtr;
   double volume;
 //  uint intVolume;
