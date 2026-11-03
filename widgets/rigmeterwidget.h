@@ -7,6 +7,7 @@
 class QSlider;
 class QLabel;
 class QProgressBar;
+class QToolButton;
 
 // status bar widget: RX/TX audio level and the transmit meters (PWR, SWR, ALC) read via hamlib
 class rigMeterWidget : public QWidget
@@ -19,6 +20,7 @@ public:
 private slots:
   void slotRxLevel(int level); // 0.1 dB
   void slotTxLevel(int level);
+  void slotOverdrive(bool on);
   void slotPoll();
 
 private:
@@ -27,6 +29,7 @@ private:
   QSlider *txSlider;
   QLabel *rxLabel;
   QLabel *txLabel;
+  QToolButton *odButton;
   QProgressBar *pwrBar;
   QProgressBar *alcBar;
   QProgressBar *swrBar;

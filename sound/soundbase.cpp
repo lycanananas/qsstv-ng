@@ -40,16 +40,17 @@ QAtomicInt soundBase::txGainQ12(4096);
 
 static int gainToQ12(double gain)
 {
-  return qRound(4096.*qBound(0.,gain,4.));
+  return qRound(4096.*qBound(0.,gain,40.));
 }
 
 static void applyGain(qint16 *data,int len,int gainQ12)
 {
-  int i,v;
+  int i;
+  qint64 v;  // up to +30 dB: 32767*gain overflows int
   if(gainQ12==4096) return;
   for(i=0;i<len;i++)
     {
-      v=(data[i]*gainQ12)>>12;
+      v=((qint64)data[i]*gainQ12)>>12;
       if(v>32767) v=32767;
       else if(v<-32768) v=-32768;
       data[i]=(qint16)v;

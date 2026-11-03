@@ -8,6 +8,7 @@
 #include <QSlider>
 #include <QLabel>
 #include <QProgressBar>
+#include <QToolButton>
 #include <QSettings>
 #include <QPalette>
 #include <QWheelEvent>
@@ -16,7 +17,8 @@
 #define POLLINTERVAL 500  // ms
 // logarithmic level sliders, position in 0.1 dB, the leftmost position mutes
 #define MINLEVEL  -400    // -40 dB
-#define RXMAXLEVEL  60    // +6 dB = 200%, above 0 dB (100%) is overdrive
+#define RXMAXLEVEL   0    // 0 dB = 100%
+#define RXODLEVEL  300    // with overdrive on: +30 dB
 #define TXMAXLEVEL   0    // 0 dB = 100%
 
 // colors are set with the palette, a style sheet changed at runtime resets the font of the widget
@@ -124,7 +126,12 @@ rigMeterWidget::rigMeterWidget(QWidget *parent) : QWidget(parent)
   QFrame *levelFrame=makeFrame(this);
   QHBoxLayout *levelLayout=(QHBoxLayout *)levelFrame->layout();
   rxSlider=makeSlider(RXMAXLEVEL,levelFrame);
-  rxSlider->setToolTip(tr("RX audio level, -40 dB to +6 dB, above 0 dB is overdrive"));
+  rxSlider->setToolTip(tr("RX audio level, -40 dB to 0 dB, with overdrive (OD) up to +30 dB"));
+  odButton=new QToolButton(levelFrame);
+  odButton->setText("OD");
+  odButton->setCheckable(true);
+  odButton->setAutoRaise(true);
+  odButton->setToolTip(tr("RX overdrive: amplify a weak audio input up to +30 dB"));
   rxLabel=new QLabel(levelFrame);
   rxLabel->setFixedWidth(rxLabel->fontMetrics().horizontalAdvance("-40.0 dB")+6);
   rxLabel->setAlignment(Qt::AlignRight|Qt::AlignVCenter);
@@ -136,6 +143,7 @@ rigMeterWidget::rigMeterWidget(QWidget *parent) : QWidget(parent)
   levelLayout->addWidget(makeName("RX",levelFrame));
   levelLayout->addWidget(rxSlider);
   levelLayout->addWidget(rxLabel);
+  levelLayout->addWidget(odButton);
   levelLayout->addSpacing(6);
   levelLayout->addWidget(makeName("TX",levelFrame));
   levelLayout->addWidget(txSlider);
@@ -159,15 +167,19 @@ rigMeterWidget::rigMeterWidget(QWidget *parent) : QWidget(parent)
 
   QSettings qSettings;
   qSettings.beginGroup("LEVELS");
-  int rxLevel=qBound(MINLEVEL,qSettings.value("rxLevel",0).toInt(),RXMAXLEVEL);
+  int rxLevel=qBound(MINLEVEL,qSettings.value("rxLevel",0).toInt(),RXODLEVEL);
+  bool overdrive=qSettings.value("rxOverdrive",false).toBool() || (rxLevel>RXMAXLEVEL);
   int txLevel=qBound(MINLEVEL,qSettings.value("txLevel",0).toInt(),TXMAXLEVEL);
   qSettings.endGroup();
+  odButton->setChecked(overdrive);
+  rxSlider->setMaximum(overdrive ? RXODLEVEL : RXMAXLEVEL);
   rxSlider->setValue(rxLevel);
   txSlider->setValue(txLevel);
   slotRxLevel(rxLevel);
   slotTxLevel(txLevel);
   connect(rxSlider,SIGNAL(valueChanged(int)),SLOT(slotRxLevel(int)));
   connect(txSlider,SIGNAL(valueChanged(int)),SLOT(slotTxLevel(int)));
+  connect(odButton,SIGNAL(toggled(bool)),SLOT(slotOverdrive(bool)));
 
   pollTimer.setInterval(POLLINTERVAL);
   connect(&pollTimer,SIGNAL(timeout()),SLOT(slotPoll()));
@@ -182,6 +194,14 @@ void rigMeterWidget::slotRxLevel(int level)
   soundBase::setRxGain(levelToGain(level));
   QSettings qSettings;
   qSettings.setValue("LEVELS/rxLevel",level);
+}
+
+// switching overdrive off brings a level above 0 dB back to 0 dB
+void rigMeterWidget::slotOverdrive(bool on)
+{
+  rxSlider->setMaximum(on ? RXODLEVEL : RXMAXLEVEL);
+  QSettings qSettings;
+  qSettings.setValue("LEVELS/rxOverdrive",on);
 }
 
 void rigMeterWidget::slotTxLevel(int level)

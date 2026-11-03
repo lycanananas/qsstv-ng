@@ -225,6 +225,7 @@ void syncProcessor::process()
 void syncProcessor::extractSync()
 {
   int i;
+  int lastSync;
   for(i=0;i<RXSTRIPE;i++)
   {
     switch(syncState)
@@ -266,7 +267,20 @@ void syncProcessor::extractSync()
 
   if((syncProcesState==INSYNC) && (enableSyncDetection))
   {
-    trackHold();
+    if(activeChainPtr==NULL)
+    {
+      switchProcessState(SYNCLOST);
+    }
+    else
+    {
+      lastSync=syncArray[activeChainPtr->last()->to].end;
+      if((sampleCounter+RXSTRIPE-RXSTRIPE/7)>(lastSync+sensitivityArray[sensitivity].maxTempOutOfSyncLines*samplesPerLine))
+      {
+        if(sensitivity!=(NUMBEROFSENSITIVITIES-1)) tempOutOfSync=true; // no temp out of sync if DX
+      }
+      missingLines=(uint) round(((sampleCounter+RXSTRIPE-RXSTRIPE/7)-(lastSync+samplesPerLine))/samplesPerLine+1);
+      calcSyncQuality();
+    }
   }
   if((visMode>=AVT24)&&(visMode<=AVT94))
   {
@@ -299,9 +313,7 @@ bool syncProcessor::validateSync()
   }
   else if(syncArray[syncArrayIndex].diffStartEnd()>=MINRETRACEWIDTH/4)
   {
-    // merging pulses into a retrace is only done while hunting: during a fade or QRM the fragments
-    // of noise would otherwise end the image that is being received
-    if((syncProcesState!=INSYNC) && (syncArrayIndex>2)
+    if((syncArrayIndex>2)
        && (syncArray[syncArrayIndex].end-syncArray[syncArrayIndex-1].start)>=MINRETRACEWIDTH
        && (syncArray[syncArrayIndex].start-syncArray[syncArrayIndex-1].end)<=MINRETRACEWIDTH/5)
     {
@@ -346,6 +358,7 @@ bool syncProcessor::validateSync()
         }
         else
         {
+          falseSyncs=0;
           lineTolerance=LINETOLERANCEINSYNC;
           // when we have S1,S2 or SDX then we have to set the syncposition at the beginning of the green line
           //          syncPosition=currentModePtr->adjustSyncPosition(syncArray[0].end)- FILTERDELAYCORRECTION; // type 1 sync end
@@ -363,7 +376,8 @@ bool syncProcessor::validateSync()
 
           syncPosition=currentModePtr->adjustSyncPosition(syncCorrected,syncArray[0].retrace)+FILTERDELAYCORRECTION; // type 2 sync end
           tempOutOfSync=false;
-          trackInit(syncCorrected);
+          slantAdjustLine=6;
+          slantAdjust(true);
           switchProcessState(INSYNC);
           addToLog(QString("Mode detected: %1, sync at %2").arg(getSSTVModeNameShort(currentMode)).arg(syncPosition),LOGSYNCEVAL);
         }
@@ -371,11 +385,7 @@ bool syncProcessor::validateSync()
       }
       break;
     case INSYNC:
-      if(enableSyncDetection)
-      {
-        if(retraceFlag) switchProcessState(RETRACEWAIT);
-        else trackAdd(syncArray[syncArrayIndex]);
-      }
+      if(enableSyncDetection) trackSyncs();
       break;
     case SYNCLOSTNEWMODE:
     case SYNCLOSTFALSESYNC:
@@ -394,21 +404,60 @@ bool syncProcessor::validateSync()
 }
 
 
+void  syncProcessor::trackSyncs()
+{
+  if(activeChainPtr==NULL)
+  {
+    return;
+  }
+  if(activeChainPtr->count()==0)
+  {
+    return;
+  }
+  if(addToChain(currentMode,activeChainPtr->last()->to))
+  {
+    falseSyncs=0;
+    missingLines=0;
+    if(tempOutOfSync)
+    {
+      // check if we can resynchronize
+      if(activeChainPtr->last()->lineSpacing<=2)
+      {
+        tempOutOfSync=false;
+      }
+    }
+  }
+
+  else
+  {
+    falseSyncs++;
+  }
+  if(retraceFlag)
+  {
+    switchProcessState(RETRACEWAIT);
+    return;
+  }
+  if(currentModeMatchChanged)
+  {
+    currentModeMatchChanged=false;
+    calculateLineNumber(activeChainPtr->last()->from,activeChainPtr->last()->to);
+    lastSyncTest=activeChainPtr->last()->endTo;
+    slantAdjust(false);
+    if(falseSlantSync>=10)
+    {
+      switchProcessState(SYNCLOSTFALSESYNC);
+    }
+  }
+}
+
 void syncProcessor::slotNewCall(QString call)
 {
   emit callReceived(call);
-  // the FSK ID follows the image: only use it to end an image that is (almost) complete,
-  // an ID decoded from noise in the middle of the image must not restart the reception
-  if((syncProcesState==INSYNC) && (currentModePtr!=NULL)
-     && (currentModePtr->receivedLines()>=(currentModePtr->imageLines()*9)/10))
-  {
-    retraceFlag=true;
-  }
+  retraceFlag=true;
 }
 
 void syncProcessor::slotVisCodeDetected(int mode,uint visSampleCounter)
 {
-  if(syncProcesState==INSYNC) holdVis=true;
   if((mode>=idxStart) && (mode<=idxEnd))
   {
     visMode=(esstvMode)mode;
@@ -424,6 +473,44 @@ void syncProcessor::slotVisCodeDetected(int mode,uint visSampleCounter)
   else
   {
     visMode=NOTVALID;
+  }
+}
+
+void  syncProcessor::calcSyncQuality()
+{
+  int k;
+  quint16 fs=0;
+  quint16 tmp;
+  syncQuality=10;
+  QString str;
+  //calc missing syncs in the last 10
+  if(activeChainPtr->count()>=10)
+  {
+    for(k=activeChainPtr->count()-10;k<activeChainPtr->count()-1;k++)
+    {
+      tmp=activeChainPtr->at(k)->to-activeChainPtr->at(k)->from-1;
+      tmp/=activeChainPtr->at(k)->lineSpacing; // this gives us the number of false syncs per line
+      fs+=tmp;
+    }
+  }
+  if(missingLines>5)
+  {
+    str=QString("FS: %1,%2 ").arg(fs).arg(((fs*3)/25));
+    syncQuality-=((fs*3)/25);
+  }
+  if(missingLines>=sensitivityArray[sensitivity].maxOutOfSyncLines)
+  {
+    str+=QString("missingLines: %1 ").arg(missingLines);
+    syncQuality=-1;
+  }
+  syncQuality-=(falseSlantSync*2);
+  str+=QString("falseSlantSync: %1").arg(falseSlantSync);
+  if(syncQuality<0) syncQuality=0;
+  if((syncQuality<=0) && (sensitivity!=(NUMBEROFSENSITIVITIES-1)))  // i.e DX Mode
+  {
+
+    addToLog(QString("syncQuality SYNCLOST %1").arg(str),LOGSYNCQUALITY);
+    switchProcessState(SYNCLOST);
   }
 }
 
@@ -944,218 +1031,106 @@ bool  syncProcessor::createModeBase()
 }
 
 
-/*
-  Sync tracking while an image is received.
-
-  The sync pulses lie on a grid: the centre of the sync of line n is at T0 + n*P (P = samples per line).
-  T0 and P are fitted (least squares) on the accepted syncs, with the nominal line length as prior for P.
-  A sync is only accepted close to its predicted position, so noise and QRM can't pull the model away.
-  Missing syncs (fading, dropouts) don't end the image: it is drawn on with the fitted clock (hold)
-  until the syncs return on the same grid.
-  The image is ended early only when the signal is gone for TRACKMAXHOLD seconds (not in DX), when syncs
-  keep coming in another phase (a new transmission) or when a VIS code is received during a hold.
-  With auto slant the image is redrawn with the fitted clock when it is about half a pixel off.
-*/
-
-#define TRACKSYNCJITTER   3.     // noise of the measured sync position in samples
-#define TRACKPRIORPPM     500.   // uncertainty of the nominal clock
-#define TRACKMINGATE      0.003  // acceptance window around the predicted sync, fraction of a line
-#define TRACKMAXGATE      0.012
-#define TRACKMINFIT       8      // accepted syncs needed before the clock is corrected
-#define TRACKREDRAWLINES  8      // minimum lines between two redraws
-#define TRACKMAXHOLD      30.    // seconds without syncs before the image is given up
-#define TRACKRIVALS       5      // syncs on another grid that mean a new transmission
-#define TRACKRIVALWINDOW  12     // lines
-
-void syncProcessor::trackInit(unsigned int syncCorrected)
+void syncProcessor::regression(DSPFLOAT &a,DSPFLOAT &b,bool initial)
 {
-  int i;
-  QList<uint> idx;
-  trackPoints.clear();
-  rivalSyncs.clear();
-  holdVis=false;
-  trackP0=samplesPerLine;
-  trackRef=(syncArray[0].start+syncArray[0].end)/2.;
-  // the syncs matched during mode detection
-  if(activeChainPtr!=NULL)
+  /* calculate linear regression
+    formula x=a+by
+    b=sum((x[i]-xm)*(y[i]-ym))/sum((y[i]-ym)*(y[i]-ym))
+    a=xm-b*ym
+  */
+  int j;
+
+  int count=activeChainPtr->count();
+  falseSlantSync=0;
+  DSPFLOAT sum_x,sum_y,sum_xx,sum_xy;
+  sum_x=sum_y=sum_xx=sum_xy=a=b=0;
+  unsigned int endZero;
+  unsigned int tempCount=0;
+  j=0;
+  endZero=syncArray[0].end;
+  for(;j<count;j++)
   {
-    for(i=0;i<activeChainPtr->count();i++)
+
+    if((activeChainPtr->at(j)->fraction>0.006)&&(!initial))
     {
-      if(i==0) idx.append(activeChainPtr->at(i)->from);
-      idx.append(activeChainPtr->at(i)->to);
+      continue;
     }
-  }
-  lastAcceptedLine=0;
-  foreach(uint k,idx)
-  {
-    lastValidSyncCounter=syncArray[k].end;
-    if(syncArray[k].retrace) continue;
-    strackPoint p;
-    p.n=round(((double)syncArray[k].end-(double)syncArray[0].end)/trackP0);
-    p.t=(syncArray[k].start+syncArray[k].end)/2.-trackRef;
-    trackPoints.append(p);
-    if(p.n>lastAcceptedLine) lastAcceptedLine=p.n;
-  }
-  trackFit();
-  initSyncCorrected=syncCorrected;
-  initRetrace=syncArray[0].retrace;
-  // syncCorrected was measured on the first sync (track time 0), after a retrace only the fit is known
-  initT0=initRetrace ? trackT0 : 0;
-  appliedT0=trackT0;
-  appliedP=trackP0;
-  lastRedrawLine=lastAcceptedLine;
-  addToLog(QString("track init: %1 syncs, line %2, P=%3").arg(trackPoints.count()).arg(lastAcceptedLine).arg(trackP),LOGSLANT);
-}
 
-void syncProcessor::trackFit()
-{
-  // least squares t = T0 + P*n, with prior P = trackP0
-  double lambda=(TRACKSYNCJITTER*TRACKSYNCJITTER)/pow(trackP0*TRACKPRIORPPM*1e-6,2);
-  double v=TRACKSYNCJITTER*TRACKSYNCJITTER;
-  int i,worst;
-  for(;;)
-  {
-    double s0=0,sn=0,snn=0,st=0,snt=0;
-    foreach(const strackPoint &p,trackPoints)
+    slantXYArray[tempCount].y=(DSPFLOAT)(syncArray[activeChainPtr->at(j)->to].end-endZero);
+    slantXYArray[tempCount].x= syncArray[activeChainPtr->at(j)->to].lineNumber*samplesPerLine;
+    addToLog(QString("pos: %1, x=%2 y=%3 syncIndex:%4, diff %5").arg(tempCount).arg(slantXYArray[tempCount].x).arg(slantXYArray[tempCount].y).arg(activeChainPtr->at(j)->to).arg(slantXYArray[tempCount].x-slantXYArray[tempCount].y) ,LOGSLANT);
+    if((fabs(slantXYArray[tempCount].x-slantXYArray[tempCount].y)>150.)&&(!initial))
     {
-      s0+=1;
-      sn+=p.n;
-      snn+=p.n*p.n;
-      st+=p.t;
-      snt+=p.n*p.t;
+      falseSlantSync++;
+      continue;
     }
-    if(s0==0)
+    sum_x+=slantXYArray[tempCount].x;
+    sum_y+=slantXYArray[tempCount].y;
+    sum_xx+=slantXYArray[tempCount].x*slantXYArray[tempCount].x;
+    sum_xy+=slantXYArray[tempCount].x*slantXYArray[tempCount].y;
+    lastValidSyncCounter=syncArray[activeChainPtr->at(j)->to].end;
+    tempCount++;
+  }
+  b=((tempCount)*sum_xy-(sum_x*sum_y))/((tempCount)*sum_xx-(sum_x*sum_x));
+  a=sum_y/(tempCount)-(b*sum_x)/(tempCount);
+}
+
+
+
+bool syncProcessor::slantAdjust(bool initial)
+{
+  DSPFLOAT a,b;
+  if ((currentMode>=AVT24) && (currentMode <= AVT94)) return true;
+  if(currentMode==NOTVALID) return true;
+  falseSlantSync=0;
+  if(!initial)
+  {
+    if(syncArray[activeChainPtr->last()->to].lineNumber<slantAdjustLine) return false;
+  }
+
+  regression(a,b,initial);
+
+  //  addToLog(QString("regr. params line %1 a:%2 b:%3").arg(slantAdjustLine).arg(a).arg(b),LOGSLANT);
+  slantAdjustLine+=5;
+  if(!autoSlantAdjust) return false;
+  if(initial)
+  {
+    if((fabs(1.-b)>0.02) || (fabs(a)>100)) return false;
+  }
+  else
+  {
+    if((fabs(1.-b)>0.005) || (fabs(a)>50)) return false;
+  }
+  if  (((fabs(1.-b)>0.00001)  || (fabs(a)>1)  )    && autoSlantAdjust)
+  {
+    newClock=true;
+    modifiedClock*=b;
+    samplesPerLine=getLineLength(currentMode,modifiedClock); //recalculate the samples per line
+    addToLog(QString("new clock accepted: %1 a=%2,b=%3").arg(modifiedClock).arg(a).arg(b),LOGSLANT);
+
+    syncArray[0].end+=(long)round(a);
+    syncArray[0].start+=(long)round(a);
+
+    unsigned int syncCorrected;
+    if(syncArray[0].retrace)
     {
-      trackT0=0;
-      trackP=trackP0;
-      trackVarT0=pow(TRACKMAXGATE*trackP0,2);
-      trackCovT0P=0;
-      trackVarP=pow(trackP0*TRACKPRIORPPM*1e-6,2);
-      return;
+      syncCorrected=syncArray[0].end;
     }
-    double d=snn+lambda;
-    double det=s0*d-sn*sn;
-    trackT0=(d*st-sn*(snt+lambda*trackP0))/det;
-    trackP=(s0*(snt+lambda*trackP0)-sn*st)/det;
-    trackVarT0=v*d/det;
-    trackCovT0P=-v*sn/det;
-    trackVarP=v*s0/det;
-    // drop a sync that doesn't fit (e.g. a false one from mode detection) and fit again
-    worst=-1;
-    double maxRes=TRACKMINGATE*trackP0;
-    for(i=0;i<trackPoints.count();i++)
+    else
     {
-      double r=fabs(trackPoints.at(i).t-(trackT0+trackPoints.at(i).n*trackP));
-      if(r>maxRes)
-      {
-        maxRes=r;
-        worst=i;
-      }
+      syncCorrected=(syncArray[0].start+syncArray[0].end)/2+getSyncWidth(currentMode,modifiedClock)/2;
     }
-    if((worst<0) || (trackPoints.count()<=4)) return;
-    trackPoints.removeAt(worst);
+
+    syncPosition=currentModePtr->adjustSyncPosition(syncCorrected,syncArray[0].retrace)+FILTERDELAYCORRECTION; // type 2 sync end
+
+    recalculateMatchArray();
+    addToLog(QString("slantAdjust: modified  syncpos:=%1").arg(syncPosition),LOGSLANT);
+
+    return true;
   }
+  return false;
 }
 
-void syncProcessor::trackAdd(const ssyncEntry &sync)
-{
-  int i;
-  if(sync.retrace) return;
-  double width=(double)sync.end-(double)sync.start;
-  if((width<syncWidth*MINSYNCWIDTHRATIO) || (width>syncWidth*MAXSYNCWIDTHRATIO)) return;
-  double t=(sync.start+sync.end)/2.-trackRef;
-  double n=round((t-trackT0)/trackP);
-  if(n<0) return;
-  double r=t-(trackT0+n*trackP);
-  double var=trackVarT0+2*n*trackCovT0P+n*n*trackVarP+TRACKSYNCJITTER*TRACKSYNCJITTER;
-  double gate=qBound(TRACKMINGATE*trackP,4*sqrt(var),TRACKMAXGATE*trackP);
-  if(fabs(r)>gate)
-  {
-    addToLog(QString("sync rejected: line %1 residual %2 gate %3").arg(n).arg(r).arg(gate),LOGSYNCREJECTED);
-    trackRival(t);
-    return;
-  }
-  // one sync per line, keep the best one
-  for(i=0;i<trackPoints.count();i++)
-  {
-    if(trackPoints.at(i).n==n)
-    {
-      if(fabs(trackPoints.at(i).t-(trackT0+n*trackP))<=fabs(r)) return;
-      trackPoints.removeAt(i);
-      break;
-    }
-  }
-  strackPoint p;
-  p.n=n;
-  p.t=t;
-  trackPoints.append(p);
-  trackFit();
-  rivalSyncs.clear();
-  holdVis=false;
-  if(n>lastAcceptedLine) lastAcceptedLine=n;
-  lastValidSyncCounter=sync.end;
-  trackApply();
-}
-
-void syncProcessor::trackRival(double t)
-{
-  // syncs that are not on the grid: a new transmission in another phase when they are regular
-  double lastAcceptedT=trackT0+lastAcceptedLine*trackP;
-  if(t-lastAcceptedT<3*trackP) return;
-  rivalSyncs.append(t);
-  while(rivalSyncs.first()<t-TRACKRIVALWINDOW*trackP) rivalSyncs.removeFirst();
-  int consistent=0;
-  foreach(double o,rivalSyncs)
-  {
-    double k=(t-o)/trackP;
-    if((k>0.5) && (fabs(k-round(k))<LINETOLERANCEINSYNC)) consistent++;
-  }
-  if(consistent>=TRACKRIVALS)
-  {
-    addToLog(QString("syncs on another grid: new transmission"),LOGSYNCLOST);
-    switchProcessState(SYNCLOST);
-  }
-}
-
-void syncProcessor::trackHold()
-{
-  double now=sampleCounter+RXSTRIPE-trackRef;
-  double missing=(now-(trackT0+lastAcceptedLine*trackP))/trackP; // lines since the last accepted sync
-  tempOutOfSync=false;
-  syncQuality=qBound(0,(int)round(11-missing),10);
-  if(holdVis && (missing>=2))
-  {
-    addToLog(QString("VIS code during hold: new transmission"),LOGSYNCLOST);
-    switchProcessState(SYNCLOST);
-    return;
-  }
-  if((sensitivity!=(NUMBEROFSENSITIVITIES-1)) && (missing*trackP>TRACKMAXHOLD*modifiedClock))
-  {
-    addToLog(QString("no syncs for %1 lines").arg(missing),LOGSYNCLOST);
-    switchProcessState(SYNCLOST);
-  }
-}
-
-void syncProcessor::trackApply()
-{
-  if(!autoSlantAdjust) return;
-  if((trackPoints.count()<TRACKMINFIT) || (lastAcceptedLine<TRACKMINFIT)) return;
-  double lines=SSTVTable[currentMode].numberOfDataLines;
-  double pixel=trackP/(4.*currentModePtr->imagePixels());
-  // difference at the end of the image between the fitted and the drawn grid
-  double drift=fabs(trackT0-appliedT0)+fabs(trackP-appliedP)*lines;
-  if(drift<pixel/2) return;
-  if((lastAcceptedLine-lastRedrawLine<TRACKREDRAWLINES) && (drift<4*pixel)) return;
-  appliedT0=trackT0;
-  appliedP=trackP;
-  lastRedrawLine=lastAcceptedLine;
-  modifiedClock=trackP*lines/SSTVTable[currentMode].imageTime;
-  samplesPerLine=trackP;
-  syncPosition=currentModePtr->adjustSyncPosition(initSyncCorrected+(long)round(appliedT0-initT0),initRetrace)+FILTERDELAYCORRECTION;
-  newClock=true;
-  addToLog(QString("new clock %1 (%2 ppm), T0 %3, drift %4, line %5")
-           .arg(modifiedClock).arg((trackP/trackP0-1)*1e6,0,'f',1).arg(trackT0,0,'f',1).arg(drift,0,'f',1).arg(lastAcceptedLine),LOGSLANT);
-}
 
 
 /**
@@ -1166,16 +1141,23 @@ bool syncProcessor::updateClockTrim()
 {
   int trim=rxSlantTrimPpm.loadRelaxed();
   if(trim==appliedTrimPpm) return false;
-  double ratio=(1.+trim*1e-6)/(1.+appliedTrimPpm*1e-6);
-  modifiedClock*=ratio;
+  modifiedClock*=(1.+trim*1e-6)/(1.+appliedTrimPpm*1e-6);
   appliedTrimPpm=trim;
   addToLog(QString("manual slant %1 ppm, clock %2").arg(trim).arg(modifiedClock),LOGSLANT);
   if((syncProcesState!=INSYNC) || (currentMode==NOTVALID)) return false;
   if((currentMode>=AVT24) && (currentMode<=AVT94)) return false;
-  trackP0*=ratio;
-  appliedP*=ratio;
-  samplesPerLine=appliedP;
-  syncPosition=currentModePtr->adjustSyncPosition(initSyncCorrected+(long)round(appliedT0-initT0),initRetrace)+FILTERDELAYCORRECTION;
+  samplesPerLine=getLineLength(currentMode,modifiedClock);
+  unsigned int syncCorrected;
+  if(syncArray[0].retrace)
+  {
+    syncCorrected=syncArray[0].end;
+  }
+  else
+  {
+    syncCorrected=(syncArray[0].start+syncArray[0].end)/2+getSyncWidth(currentMode,modifiedClock)/2;
+  }
+  syncPosition=currentModePtr->adjustSyncPosition(syncCorrected,syncArray[0].retrace)+FILTERDELAYCORRECTION;
+  recalculateMatchArray();
   newClock=true;
   return true;
 }
