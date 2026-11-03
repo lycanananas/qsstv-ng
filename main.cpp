@@ -28,6 +28,7 @@
 #include <QSplashScreen>
 #include <QTimer>
 #include <QSettings>
+#include <clocale>
 #include <QDir>
 #include <QFileInfo>
 #include <QVersionNumber>
@@ -77,6 +78,9 @@ int main( int argc, char ** argv )
   QCoreApplication::setOrganizationName(ORGANIZATION);
   QCoreApplication::setApplicationName(APPLICATION);
   QApplication app( argc, argv );
+  // QApplication sets the C locale from the system, with e.g. pl_PL the decimal separator becomes ','
+  // and hamlib reads "1.18" from rigctld as 1 (SWR, ALC, power). Qt formats numbers itself.
+  setlocale(LC_NUMERIC,"C");
   // window <-> launcher association: Wayland app_id and _KDE_NET_WM_DESKTOP_FILE
   // (WM_CLASS can't be used, its class part is the application name which also names the settings file)
   QGuiApplication::setDesktopFileName("qsstv-ng");
