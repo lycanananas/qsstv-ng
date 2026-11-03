@@ -4,6 +4,7 @@
 #include <QWidget>
 #include <QFrame>
 #include <QSlider>
+#include <QTimer>
 #include <QLabel>
 #include "spectrumwidget.h"
 #include "ui_rxwidget.h"
@@ -79,5 +80,6 @@ private:
   bool doRemove;
   QSlider *slantSlider;
   QLabel *slantLabel;
+  QTimer slantTimer;
 };
 #endif // RXWIDGET_H

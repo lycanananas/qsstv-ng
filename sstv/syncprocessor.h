@@ -95,10 +95,10 @@ struct smatchEntry
   uint endTo; /**< sampleCounter To */
 };
 
-struct sslantXY
+struct strackPoint
 {
-  DSPFLOAT x;
-  DSPFLOAT y;
+  double n;  // line number
+  double t;  // sync centre (samples)
 };
 
 typedef QList<smatchEntry *> modeMatchList;
@@ -164,7 +164,6 @@ private:
   quint16 syncArrayIndex;
   ssyncEntry syncArray[MAXSYNCENTRIES];
   modeMatchChain matchArray[NOTVALID];
-  quint16 slantAdjustLine;
   esstvMode currentMode;
   esyncState syncState;
   esyncProcessState syncProcesState;
@@ -179,9 +178,7 @@ private:
   modeMatchList *activeChainPtr;
 
   bool currentModeMatchChanged;
-  uint lastSyncTest;
   uint lastUpdatedSync;
-  sslantXY slantXYArray[MAXSYNCENTRIES];
   esstvMode visMode;
 
   void extractSync();
@@ -201,20 +198,35 @@ private:
   void deleteSyncArrayEntry(uint entry);
   bool createModeBase();
   void checkSyncArray();
-  void trackSyncs();
-  void calcSyncQuality();
   void calculateLineNumber(uint fromIdx, uint toIdx);
-  void regression(DSPFLOAT &a, DSPFLOAT &b, bool initial);
-  bool slantAdjust(bool initial);
+  // sync tracking while receiving an image
+  void trackInit(unsigned int syncCorrected);
+  void trackFit();
+  void trackAdd(const ssyncEntry &sync);
+  void trackRival(double t);
+  void trackHold();
+  void trackApply();
+  QList<strackPoint> trackPoints;
+  QList<double> rivalSyncs;
+  double trackRef;      // sample position the track times are relative to
+  double trackP0;       // nominal samples per line
+  double trackT0;       // fitted sync centre of line 0
+  double trackP;        // fitted samples per line
+  double trackVarT0;
+  double trackCovT0P;
+  double trackVarP;
+  double initT0;        // fitted T0 when the image started
+  double appliedT0;     // grid the image is drawn with
+  double appliedP;
+  double lastAcceptedLine;
+  double lastRedrawLine;
+  unsigned int initSyncCorrected;
+  bool initRetrace;
+  bool holdVis;
   DSPFLOAT syncWidth;
 
 
   // signal quality
-  quint16 falseSlantSync;
-  quint16 unmatchedSyncs;
-  quint16 falseSyncs;
-  quint16 avgLineSpacing;
-  quint16 missingLines;
 
   bool detectNarrow;
   bool enableSyncDetection;

@@ -75,13 +75,17 @@ rxWidget::rxWidget(QWidget *parent):QWidget(parent),ui(new Ui::rxWidget)
   ui->autoSlantAdjustCheckBox->setToolTip(tr("Measure the slant from the sync pulses and correct the RX clock automatically,\n"
                                              "the image is redrawn while it is being received"));
   connect(slantSlider,SIGNAL(valueChanged(int)),SLOT(slotSlant(int)));
+  // every change redraws the image being received: apply it when the slider has stopped moving
+  slantTimer.setSingleShot(true);
+  slantTimer.setInterval(300);
+  connect(&slantTimer,&QTimer::timeout,[this]{rxSlantTrimPpm.storeRelaxed(slantSlider->value());});
   connect(slantZeroButton,&QToolButton::clicked,[this]{slantSlider->setValue(0);});
 }
 
 void rxWidget::slotSlant(int ppm)
 {
   slantLabel->setText(QString("Slant %1%2 ppm").arg(ppm>0 ? "+" : "").arg(ppm));
-  rxSlantTrimPpm.storeRelaxed(ppm);
+  slantTimer.start();
 }
 
 rxWidget::~rxWidget()
@@ -150,6 +154,7 @@ void rxWidget::readSettings()
   minCompletion=qSettings.value("minCompletion",25).toInt();
   slantSlider->setValue(qSettings.value("slantTrimPpm",0).toInt());
   slotSlant(slantSlider->value());
+  rxSlantTrimPpm.storeRelaxed(slantSlider->value());
   setParams();
   qSettings.endGroup();
 
